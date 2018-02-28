@@ -9,6 +9,9 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
+
+	"gopkg.in/cheggaaa/pb.v1"
 )
 
 type Problem struct {
@@ -23,7 +26,16 @@ type Solution struct {
 
 func Solve(problem *Problem) (*Solution, error) {
 	var solution Solution
+
+	count := 1500
+	bar := pb.StartNew(count)
+	for i := 0; i < count; i++ {
+		bar.Increment()
+		time.Sleep(time.Millisecond)
+	}
+	bar.FinishPrint("DONE")
 	solution.answer = 42
+
 	return &solution, nil
 }
 
