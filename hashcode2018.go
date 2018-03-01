@@ -7,41 +7,185 @@ import (
 	"log"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
-	"time"
+	_ "time"
 
 	"gopkg.in/cheggaaa/pb.v1"
 )
 
 type Problem struct {
-	numLines int
-	numbers  []int
-	data     []string
+	rows         int
+	cols         int
+	fleetSize    int
+	numRides     int
+	onTimeBonus  int
+	numTimesteps int
+	rides        []*Ride
+}
+
+type Ride struct {
+	originalIndex int
+	startX        int
+	startY        int
+	endX          int
+	endY          int
+	start         int
+	finish        int
 }
 
 type Solution struct {
-	answer int
+	routes [][]int
+}
+
+func (ride *Ride) Distance() int {
+	return (ride.endY - ride.startY) + (ride.endX - ride.startX)
+}
+
+func (ride *Ride) LatestPossibleStartTime() int {
+	return ride.finish - 1 - ride.Distance()
+}
+
+func (ride *Ride) EarliestPossibleFinishTime() int {
+	return ride.start + ride.Distance()
+}
+
+func (r1 *Ride) TravelTime(r2 *Ride) int {
+	return (r2.startX - r1.endX) + (r2.startY - r1.endY)
+}
+
+type ridesList []*Ride
+
+// Implement sort interface for ride list
+func (rides ridesList) Len() int {
+	return len(rides)
+}
+func (rides ridesList) Swap(i, j int) {
+	rides[i], rides[j] = rides[j], rides[i]
+}
+func (rides ridesList) Less(i, j int) bool {
+	r1 := rides[i]
+	r2 := rides[j]
+	if r1.finish < r2.finish {
+		return true
+	} else {
+		return r1.start < r2.start
+	}
+}
+
+func OrderRidesByEndTime(rides []*Ride) []*Ride {
+	// Make a copy of the input to avoid mutating it
+	sortedRides := make([]*Ride, len(rides))
+	for i, r := range rides {
+		sortedRides[i] = r
+	}
+	sort.Sort(ridesList(sortedRides))
+	//fmt.Print(sortedRides)
+	return sortedRides
+}
+
+func AreRidesCompatible(r1 *Ride, r2 *Ride) bool {
+	return r1.EarliestPossibleFinishTime()+r1.TravelTime(r2) <= r2.LatestPossibleStartTime()
+}
+
+func AreRidesCompatibleConcrete(r1 *Ride, r2 *Ride, r2_start int) bool {
+	return r1.finish <= r2_start-r1.TravelTime(r2)
+}
+
+// Assumes they are compatible
+func RecommendConcreteStartTimes(r1 *Ride, r2 *Ride) (int, int) {
+	r2_t := r2.LatestPossibleStartTime()
+	r1_t := r2_t - r1.TravelTime(r2) - r1.Distance()
+	return r1_t, r2_t
+}
+
+// Greedily computes a route using the given rides
+// Returns a list of ints which are the indexes of each ride in the route
+// Assumes rides is sorted
+// original Rides passed as param to allow quick lookup by index
+func GreedyCarRoute(originalRides []*Ride, sortedRides []*Ride, usedSet map[int]bool) []int {
+	var route []int
+
+	// Initialize the last ride, should probably be the first one from the end
+	// that hasn't already been used
+	var lastRideSeenIndex int = -1
+	var lastRideStartTime int
+	for i := len(sortedRides) - 1; i >= 0; i-- {
+		if !usedSet[i] {
+			ride := sortedRides[i]
+			lastRideSeenIndex = i
+			lastRideStartTime = ride.LatestPossibleStartTime()
+			break
+		}
+	}
+	if lastRideSeenIndex == -1 {
+		panic("lastRideSeenIndex should always be definable")
+	}
+
+	route = append(route, lastRideSeenIndex)
+
+	for i := len(sortedRides) - 1; i >= 0; i-- {
+		// Skip if already used
+		if usedSet[i] {
+			continue
+		}
+
+		lastRide := originalRides[lastRideSeenIndex]
+		ride := sortedRides[i]
+
+		if AreRidesCompatibleConcrete(ride, lastRide, lastRideStartTime) {
+			lastRideSeenIndex = i
+			route = append(route, lastRideSeenIndex)
+
+			recommended_t1, _ := RecommendConcreteStartTimes(ride, lastRide)
+			lastRideStartTime = recommended_t1
+		}
+	}
+
+	// Add every ride in the route to the used set
+	for _, rideIndex := range route {
+		usedSet[rideIndex] = true
+	}
+
+	// Reverse the route (since it's back to front)
+	return reverse(route)
+}
+
+func reverse(numbers []int) []int {
+	for i := 0; i < len(numbers)/2; i++ {
+		j := len(numbers) - i - 1
+		numbers[i], numbers[j] = numbers[j], numbers[i]
+	}
+	return numbers
 }
 
 func Solve(problem *Problem) (*Solution, error) {
 	var solution Solution
+	solution.routes = make([][]int, problem.fleetSize)
 
-	count := 1500
-	bar := pb.StartNew(count)
-	for i := 0; i < count; i++ {
+	sortedRides := OrderRidesByEndTime(problem.rides)
+
+	// The set of rides which we've allocated (their indices)
+	bar := pb.StartNew(problem.fleetSize)
+	usedSet := make(map[int]bool)
+	for i := 0; i < problem.fleetSize; i++ {
+		route := GreedyCarRoute(problem.rides, sortedRides, usedSet)
+		solution.routes[i] = route
 		bar.Increment()
-		time.Sleep(time.Millisecond)
+
+		if len(usedSet) == problem.numRides {
+			break
+		}
 	}
 	bar.FinishPrint("DONE")
-	solution.answer = 42
 
+	//fmt.Print(solution)
 	return &solution, nil
 }
 
 func ParseInputFile(filePath string) (*Problem, error) {
 	var problem Problem
-	problem.numbers = make([]int, 6)
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -59,17 +203,26 @@ func ParseInputFile(filePath string) (*Problem, error) {
 
 		if lineNumber == 0 {
 			// Header line
-			problem.numLines, _ = strconv.Atoi(line)
-			problem.data = make([]string, problem.numLines)
-		} else if lineNumber == 1 {
-			// Numbers line
 			parts := strings.Split(line, " ")
-			for i, part := range parts {
-				problem.numbers[i], _ = strconv.Atoi(part)
-			}
+			problem.rows, _ = strconv.Atoi(parts[0])
+			problem.cols, _ = strconv.Atoi(parts[1])
+			problem.fleetSize, _ = strconv.Atoi(parts[2])
+			problem.numRides, _ = strconv.Atoi(parts[3])
+			problem.onTimeBonus, _ = strconv.Atoi(parts[4])
+			problem.numTimesteps, _ = strconv.Atoi(parts[5])
+			problem.rides = make([]*Ride, problem.numRides)
 		} else {
-			// Data lines
-			problem.data[lineNumber-2] = line
+			// Ride description line
+			parts := strings.Split(line, " ")
+			ride := Ride{}
+			ride.startY, _ = strconv.Atoi(parts[0])
+			ride.startX, _ = strconv.Atoi(parts[1])
+			ride.endY, _ = strconv.Atoi(parts[2])
+			ride.endX, _ = strconv.Atoi(parts[3])
+			ride.start, _ = strconv.Atoi(parts[4])
+			ride.finish, _ = strconv.Atoi(parts[5])
+			ride.originalIndex = lineNumber - 1
+			problem.rides[lineNumber-1] = &ride
 		}
 
 		lineNumber++
@@ -85,7 +238,11 @@ func SaveSolutionFile(solution *Solution, filePath string) {
 	}
 	defer f.Close()
 
-	f.WriteString(fmt.Sprintf("%d\n", solution.answer))
+	for _, route := range solution.routes {
+		f.WriteString(fmt.Sprintf("%d ", len(route)))
+		f.WriteString(strings.Trim(strings.Join(strings.Split(fmt.Sprint(route), " "), " "), "[]"))
+		f.WriteString("\n")
+	}
 }
 
 func main() {
@@ -103,7 +260,7 @@ func main() {
 		return
 	}
 
-	fmt.Printf("Problem%+v\n", *problem)
+	//fmt.Printf("Problem%+v\n", *problem)
 
 	fmt.Println("Solving...")
 	solution, err := Solve(problem)
