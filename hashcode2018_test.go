@@ -91,3 +91,9 @@ func TestEarliestPossibleFinishTime(t *testing.T) {
 
 func TestGreedyCarRoute(t *testing.T) {
 }
+
+func TestTravelTime(t *testing.T) {
+	r1 := Ride{startX: 0, startY: 0, endX: 0, endY: 5, start: 0, finish: 7}
+	r2 := Ride{startX: 0, startY: 0, endX: 0, endY: 5, start: 0, finish: 7}
+	assert.Equal(t, 0, (&r1).TravelTime(&r2))
+}
