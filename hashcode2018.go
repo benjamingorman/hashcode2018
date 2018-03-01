@@ -86,11 +86,19 @@ func OrderRidesByEndTime(rides []*Ride) []*Ride {
 }
 
 func AreRidesCompatible(r1 *Ride, r2 *Ride) bool {
-	return r1.EarliestPossibleFinishTime()+r1.TravelTime(r2) <= r2.LatestPossibleStartTime()
+	if r1.originalIndex == r2.originalIndex {
+		return false
+	} else {
+		return r1.EarliestPossibleFinishTime()+r1.TravelTime(r2) <= r2.LatestPossibleStartTime()
+	}
 }
 
 func AreRidesCompatibleConcrete(r1 *Ride, r2 *Ride, r2_start int) bool {
-	return r1.finish <= r2_start-r1.TravelTime(r2)
+	if r1.originalIndex == r2.originalIndex {
+		return false
+	} else {
+		return r1.finish <= r2_start-r1.TravelTime(r2)
+	}
 }
 
 // Assumes they are compatible
@@ -107,6 +115,8 @@ func RecommendConcreteStartTimes(r1 *Ride, r2 *Ride) (int, int) {
 func GreedyCarRoute(originalRides []*Ride, sortedRides []*Ride, usedSet map[int]bool) []int {
 	var route []int
 
+	//fmt.Println("length of usedSet", len(usedSet))
+
 	// Initialize the last ride, should probably be the first one from the end
 	// that hasn't already been used
 	var lastRideSeenIndex int = -1
@@ -116,6 +126,8 @@ func GreedyCarRoute(originalRides []*Ride, sortedRides []*Ride, usedSet map[int]
 			ride := sortedRides[i]
 			lastRideSeenIndex = i
 			lastRideStartTime = ride.LatestPossibleStartTime()
+			//fmt.Println("First ride", lastRideSeenIndex)
+			// fmt.Printf("%+v\n", *ride)
 			break
 		}
 	}
@@ -128,6 +140,9 @@ func GreedyCarRoute(originalRides []*Ride, sortedRides []*Ride, usedSet map[int]
 	for i := len(sortedRides) - 1; i >= 0; i-- {
 		// Skip if already used
 		if usedSet[i] {
+			//fmt.Println("Skipping used ride", i)
+			continue
+		} else if i >= lastRideSeenIndex {
 			continue
 		}
 
@@ -135,6 +150,7 @@ func GreedyCarRoute(originalRides []*Ride, sortedRides []*Ride, usedSet map[int]
 		ride := sortedRides[i]
 
 		if AreRidesCompatibleConcrete(ride, lastRide, lastRideStartTime) {
+			//fmt.Println("Compatible:", i, lastRideSeenIndex)
 			lastRideSeenIndex = i
 			route = append(route, lastRideSeenIndex)
 
@@ -146,6 +162,11 @@ func GreedyCarRoute(originalRides []*Ride, sortedRides []*Ride, usedSet map[int]
 	// Add every ride in the route to the used set
 	for _, rideIndex := range route {
 		usedSet[rideIndex] = true
+	}
+
+	// Convert between sorted routes indices and original
+	for i, sortedRideIndex := range route {
+		route[i] = sortedRides[sortedRideIndex].originalIndex
 	}
 
 	// Reverse the route (since it's back to front)
@@ -173,6 +194,7 @@ func Solve(problem *Problem) (*Solution, error) {
 		route := GreedyCarRoute(problem.rides, sortedRides, usedSet)
 		solution.routes[i] = route
 		bar.Increment()
+		//fmt.Println(len(usedSet))
 
 		if len(usedSet) == problem.numRides {
 			break
