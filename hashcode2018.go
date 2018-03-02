@@ -15,6 +15,10 @@ import (
 	"gopkg.in/cheggaaa/pb.v1"
 )
 
+const (
+	DEBUG = true
+)
+
 type Problem struct {
 	rows         int
 	cols         int
@@ -97,13 +101,13 @@ func AreRidesCompatibleConcrete(r1 *Ride, r2 *Ride, r2_start int) bool {
 	if r1.originalIndex == r2.originalIndex {
 		return false
 	} else {
-		return r1.finish <= r2_start-r1.TravelTime(r2)
+		return r1.finish+r1.TravelTime(r2) <= r2_start
 	}
 }
 
 // Assumes they are compatible
-func RecommendConcreteStartTimes(r1 *Ride, r2 *Ride) (int, int) {
-	r2_t := r2.LatestPossibleStartTime()
+func RecommendConcreteStartTimes(r1 *Ride, r2 *Ride, r2_start_time int) (int, int) {
+	r2_t := r2_start_time
 	r1_t := r2_t - r1.TravelTime(r2) - r1.Distance()
 	return r1_t, r2_t
 }
@@ -149,12 +153,18 @@ func GreedyCarRoute(originalRides []*Ride, sortedRides []*Ride, usedSet map[int]
 		lastRide := originalRides[lastRideSeenIndex]
 		ride := sortedRides[i]
 
-		if AreRidesCompatibleConcrete(ride, lastRide, lastRideStartTime) {
-			//fmt.Println("Compatible:", i, lastRideSeenIndex)
+		if ride.start < lastRideStartTime && AreRidesCompatibleConcrete(ride, lastRide, lastRideStartTime) {
+			if DEBUG {
+				fmt.Println("Compatible:", i, lastRideSeenIndex)
+				fmt.Println("Compatible orig:", ride.originalIndex, lastRide.originalIndex)
+			}
 			lastRideSeenIndex = i
 			route = append(route, lastRideSeenIndex)
 
-			recommended_t1, _ := RecommendConcreteStartTimes(ride, lastRide)
+			recommended_t1, _ := RecommendConcreteStartTimes(ride, lastRide, lastRideStartTime)
+			if DEBUG {
+				fmt.Println(recommended_t1)
+			}
 			lastRideStartTime = recommended_t1
 		}
 	}
@@ -199,6 +209,13 @@ func Solve(problem *Problem) (*Solution, error) {
 		if len(usedSet) == problem.numRides {
 			break
 		}
+
+		if DEBUG {
+			for _, ri := range route {
+				fmt.Printf("%+v\n", *problem.rides[ri])
+			}
+		}
+		break
 	}
 	bar.FinishPrint("DONE")
 
