@@ -55,8 +55,16 @@ func (ride *Ride) EarliestPossibleFinishTime() int {
 	return ride.start + ride.Distance()
 }
 
+func absInt(val int) int {
+	if val < 0 {
+		return -val
+	} else {
+		return val
+	}
+}
+
 func (r1 *Ride) TravelTime(r2 *Ride) int {
-	return (r2.startX - r1.endX) + (r2.startY - r1.endY)
+	return absInt(r2.startX-r1.endX) + absInt(r2.startY-r1.endY)
 }
 
 type ridesList []*Ride
